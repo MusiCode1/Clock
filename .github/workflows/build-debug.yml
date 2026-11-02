@@ -22,7 +22,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: assembleDebug
-        run: ./gradlew --no-daemon assembleDebug
+        # gradlew is mode 100644 upstream, so ./gradlew exits 126. Fixed here
+        # rather than by changing a file the fork inherits.
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
 
       - name: locate apk
         id: apk
