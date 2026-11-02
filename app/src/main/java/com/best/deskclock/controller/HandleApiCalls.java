@@ -321,10 +321,73 @@ public class HandleApiCalls extends Activity {
      * Processes the SET_ALARM intent
      * @param intent Intent passed to the app
      */
+    /**
+     * Bundle extra: the absolute moment the alarm should ring, in epoch milliseconds.
+     *
+     * <p>{@link AlarmClock#ACTION_SET_ALARM} only carries a time of day, so an alarm created
+     * through it always fires at the next occurrence of that time. This extra lets a caller
+     * schedule a one-shot alarm on a specific calendar date, which the data model and the
+     * scheduler already support ({@code Alarm.year/month/day} are honoured by
+     * {@code Alarm.getNextAlarmTime()} for non-repeating alarms) but no intent exposed.</p>
+     *
+     * <p>When present it also supplies the hour and the minute, so
+     * {@link AlarmClock#EXTRA_HOUR} and {@link AlarmClock#EXTRA_MINUTES} may be omitted.
+     * A date is mutually exclusive with recurrence, exactly as in the alarm editor: the
+     * alarm is forced to non-repeating.</p>
+     *
+     * <p>The value is a {@code long}. Values in the past are rejected.</p>
+     */
+    public static final String EXTRA_ALARM_AT_MILLIS = "com.best.deskclock.extra.ALARM_AT_MILLIS";
+
+    /**
+     * @return a calendar for {@link #EXTRA_ALARM_AT_MILLIS}, or {@code null} when the extra is
+     * absent or does not denote a future moment.
+     */
+    private static Calendar getAlarmAtFromIntent(@NonNull Intent intent) {
+        if (!intent.hasExtra(EXTRA_ALARM_AT_MILLIS)) {
+            return null;
+        }
+        final long millis = intent.getLongExtra(EXTRA_ALARM_AT_MILLIS, -1L);
+        if (millis <= 0L || millis <= System.currentTimeMillis()) {
+            // A past moment would be silently shifted forward by a day by the scheduler;
+            // refuse it instead of creating an alarm at a time nobody asked for.
+            LOGGER.i("Ignoring non-future " + EXTRA_ALARM_AT_MILLIS + ": " + millis);
+            return null;
+        }
+        final Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(millis);
+        return calendar;
+    }
+
+    /**
+     * Copies the date of {@link #EXTRA_ALARM_AT_MILLIS} onto the alarm. Mirrors what the alarm
+     * editor does when the user picks a date: the alarm stops recurring and any pause is cleared.
+     */
+    private static void applyDateFromIntent(@NonNull Alarm alarm, @NonNull Intent intent) {
+        final Calendar at = getAlarmAtFromIntent(intent);
+        if (at == null) {
+            return;
+        }
+        if (alarm.daysOfWeek.isRepeating()) {
+            alarm.daysOfWeek = Weekdays.NONE;
+        }
+        if (alarm.isPauseSet()) {
+            alarm.pauseStartDate = 0;
+            alarm.pauseEndDate = 0;
+        }
+        alarm.year = at.get(Calendar.YEAR);
+        alarm.month = at.get(Calendar.MONTH);
+        alarm.day = at.get(Calendar.DAY_OF_MONTH);
+    }
+
     private void handleSetAlarm(@NonNull Intent intent) {
+        // An absolute moment supplies the time of day as well, so the hour and the minute
+        // extras become optional for callers that use it.
+        final Calendar alarmAt = getAlarmAtFromIntent(intent);
+
         // Validate the hour, if one was given.
-        int hour = -1;
-        if (intent.hasExtra(AlarmClock.EXTRA_HOUR)) {
+        int hour = alarmAt == null ? -1 : alarmAt.get(Calendar.HOUR_OF_DAY);
+        if (alarmAt == null && intent.hasExtra(AlarmClock.EXTRA_HOUR)) {
             hour = intent.getIntExtra(AlarmClock.EXTRA_HOUR, hour);
             if (hour < 0 || hour > 23) {
                 final int mins = intent.getIntExtra(AlarmClock.EXTRA_MINUTES, 0);
@@ -336,7 +399,9 @@ public class HandleApiCalls extends Activity {
         }
 
         // Validate the minute, if one was given.
-        final int minutes = intent.getIntExtra(AlarmClock.EXTRA_MINUTES, 0);
+        final int minutes = alarmAt == null
+            ? intent.getIntExtra(AlarmClock.EXTRA_MINUTES, 0)
+            : alarmAt.get(Calendar.MINUTE);
         if (minutes < 0 || minutes > 59) {
             final String voiceMessage = getString(R.string.invalid_time, hour, minutes, " ");
             Controller.getController().notifyVoiceFailure(this, voiceMessage);
@@ -615,6 +680,7 @@ public class HandleApiCalls extends Activity {
         alarm.minutes = intent.getIntExtra(AlarmClock.EXTRA_MINUTES, alarm.minutes);
         alarm.alert = getAlertFromIntent(intent, alarm.alert);
         alarm.daysOfWeek = getDaysFromIntent(intent, alarm.daysOfWeek);
+        applyDateFromIntent(alarm, intent);
     }
 
     /**
@@ -718,6 +784,16 @@ public class HandleApiCalls extends Activity {
         if (intent.hasExtra(AlarmClock.EXTRA_MESSAGE)) {
             selection.append(" AND ").append(Alarm.LABEL).append("=?");
             args.add(getLabelFromIntent(intent, ""));
+        }
+
+        final Calendar alarmAt = getAlarmAtFromIntent(intent);
+        if (alarmAt != null) {
+            selection.append(" AND ").append(Alarm.YEAR).append("=?");
+            args.add(String.valueOf(alarmAt.get(Calendar.YEAR)));
+            selection.append(" AND ").append(Alarm.MONTH).append("=?");
+            args.add(String.valueOf(alarmAt.get(Calendar.MONTH)));
+            selection.append(" AND ").append(Alarm.DAY).append("=?");
+            args.add(String.valueOf(alarmAt.get(Calendar.DAY_OF_MONTH)));
         }
 
         // Days is treated differently than other fields because if days is not specified, it
