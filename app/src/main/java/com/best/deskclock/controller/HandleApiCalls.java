@@ -378,6 +378,12 @@ public class HandleApiCalls extends Activity {
         alarm.year = at.get(Calendar.YEAR);
         alarm.month = at.get(Calendar.MONTH);
         alarm.day = at.get(Calendar.DAY_OF_MONTH);
+        // The moment carries the time of day too. Without this the alarm keeps the
+        // hour and the minute a new Alarm() starts with -- 00:00 -- because
+        // updateAlarmFromIntent() reads them from EXTRA_HOUR / EXTRA_MINUTES, which a
+        // caller using this extra has no reason to send.
+        alarm.hour = at.get(Calendar.HOUR_OF_DAY);
+        alarm.minutes = at.get(Calendar.MINUTE);
     }
 
     private void handleSetAlarm(@NonNull Intent intent) {
