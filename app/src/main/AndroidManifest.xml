@@ -210,6 +210,18 @@
             android:directBootAware="true"
             android:exported="false" />
 
+        <!-- Headless alarm operations by label (enable/disable/delete), no UI.
+             Guarded by SET_ALARM so only holders (incl. adb shell / uid 2000)
+             can call. See AlarmApiReceiver for the contract. -->
+        <receiver
+            android:name="com.best.deskclock.controller.AlarmApiReceiver"
+            android:permission="com.android.alarm.permission.SET_ALARM"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.best.deskclock.action.ALARM_OP" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name="com.best.deskclock.alarms.AlarmInitReceiver"
             android:directBootAware="true"
