@@ -33,6 +33,19 @@ android {
                 println "Keystore properties file not found. No signing configuration will be applied."
             }
         }
+        // Debug signing is pinned to a stable keystore in CI so that every
+        // build shares one signature and `pm install -r` can update a phone
+        // in place. Without DEBUG_KEYSTORE_FILE (local dev) AGP falls back to
+        // its own ~/.gradle/debug.keystore, so nothing changes off-CI.
+        debug {
+            def ksPath = System.getenv("DEBUG_KEYSTORE_FILE")
+            if (ksPath != null && !ksPath.isEmpty() && file(ksPath).exists()) {
+                storeFile = file(ksPath)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     def commitNumber = 0

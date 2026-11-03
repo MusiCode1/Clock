@@ -21,6 +21,20 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Restore pinned debug keystore
+        # Stable signature across builds → pm install -r works on a real phone.
+        # Secret absent (e.g. a fork without it) → fall back to the ephemeral key.
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+            echo "DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
+            echo "pinned debug keystore restored ($(wc -c < "$RUNNER_TEMP/debug.keystore") bytes)"
+          else
+            echo "no DEBUG_KEYSTORE_B64 secret; using ephemeral debug key"
+          fi
+
       - name: assembleDebug
         # gradlew is mode 100644 upstream, so ./gradlew exits 126. Fixed here
         # rather than by changing a file the fork inherits.
